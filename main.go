@@ -44,14 +44,16 @@ type petnamex struct{ Name string }
 func (h *petnameHandler) Root(p httprequest.Params,
 	arg *struct {
 		httprequest.Route `httprequest:"GET /"`
-	}) (*petnamex, error) {
+	}) (petnamex, error) {
 	name := petname.Generate(3, "-")
 	a := newAccept(p.Request.Header["Accept"])
+	r := petnamex{name}
 	if a.Contains("text/html") {
-		h.t.Execute(p.Response, petnamex{name})
-		return nil, nil
+		p.Response.Header()["Content-Type"] = []string{"FUCKYOU"}
+		h.t.Execute(p.Response, r)
+		return r, nil
 	}
-	return &petnamex{name}, nil
+	return r, nil
 }
 
 type petnameErrorResponse struct{ Message string }
