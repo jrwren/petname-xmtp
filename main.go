@@ -4,18 +4,28 @@
 package main
 
 import (
+	"html/template"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/dustinkirkland/golang-petname"
-	"github.com/julienschmidt/httprouter"
-
 	"github.com/juju/httprequest"
+	"github.com/julienschmidt/httprouter"
 )
 
 func main() {
-	f := func(p httprequest.Params) (petnameHandler, error) {
-		return petnameHandler{}, nil
+	html, err := ioutil.ReadFile("index.html.tmpl")
+	if err != nil {
+		log.Fatal(err)
+	}
+	t, err := template.New("f").Parse(string(html))
+	if err != nil {
+		log.Fatal(err)
+	}
+	f := func(p httprequest.Params) (*petnameHandler, error) {
+		return &petnameHandler{t}, nil
 	}
 	router := httprouter.New()
 	for _, h := range petnameErrorMapper.Handlers(f) {
@@ -25,15 +35,23 @@ func main() {
 	log.Fatal(http.ListenAndServe(":2016", router))
 }
 
-type petnameHandler struct{}
+type petnameHandler struct {
+	t *template.Template
+}
 
 type petnamex struct{ Name string }
 
-func (petnameHandler) Root(arg *struct {
-	httprequest.Route `httprequest:"GET /"`
-}) (petnamex, error) {
+func (h *petnameHandler) Root(p httprequest.Params,
+	arg *struct {
+		httprequest.Route `httprequest:"GET /"`
+	}) (*petnamex, error) {
 	name := petname.Generate(3, "-")
-	return petnamex{name}, nil
+	a := newAccept(p.Request.Header["Accept"])
+	if a.Contains("text/html") {
+		h.t.Execute(p.Response, petnamex{name})
+		return nil, nil
+	}
+	return &petnamex{name}, nil
 }
 
 type petnameErrorResponse struct{ Message string }
@@ -42,4 +60,27 @@ var petnameErrorMapper httprequest.ErrorMapper = func(err error) (int, interface
 	return http.StatusInternalServerError, &petnameErrorResponse{
 		Message: err.Error(),
 	}
+}
+
+type accept struct{ a []string }
+
+func newAccept(a []string) accept {
+	joinedheaders := strings.Join(a, "")
+	semis := strings.Split(joinedheaders, ";")
+	aa := make([]string, 0, len(semis))
+	for i := range semis {
+		c := strings.Split(semis[i], ",")
+		for j := range c {
+			aa = append(aa, c[j])
+		}
+	}
+	return accept{aa}
+}
+func (a accept) Contains(s string) bool {
+	for i := range a.a {
+		if a.a[i] == s {
+			return true
+		}
+	}
+	return false
 }
